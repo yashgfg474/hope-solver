@@ -186,10 +186,11 @@ def _worker_loop() -> None:
                     if token:
                         winner = "widget"
                         break
-                    # No 8s dead wait: give managed auto-pass ~1.5s, then
-                    # click the checkbox as soon as it is clickable.
+                    # No dead wait: give managed auto-pass ~0.8s, then
+                    # click the checkbox as soon as it is clickable,
+                    # re-clicking every 1s until the token lands.
                     now = time.time()
-                    if now - t0 > 1.5 and now - last_click > 2.0:
+                    if now - t0 > 0.8 and now - last_click > 1.0:
                         if ts_mod._human_click_iframe(page):
                             last_click = now
                     time.sleep(0.2)
@@ -395,7 +396,10 @@ class Handler(BaseHTTPRequestHandler):
                     token = t.get("value") or ""
                     break
             if token:
-                return self._send({"token": token})
+                return self._send({"token": token,
+                                   "solver": t.get("solver") or "",
+                                   "elapsed": t.get("elapsed_time") or
+                                   round(time.time() - t0, 1)})
             return self._send({"status": "error", "message": "unsolved",
                                "elapsed": round(time.time() - t0, 1)}, 500)
         except BrokenPipeError:
