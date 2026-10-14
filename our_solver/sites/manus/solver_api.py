@@ -137,7 +137,8 @@ def _worker_loop() -> None:
             continue
         if task is None:
             return
-        task_id, url, sitekey, action, cdata, timeout = task
+        task = task if len(task) == 7 else (*task, "")
+        task_id, url, sitekey, action, cdata, timeout, only = task
         t0 = time.time()
         token = ""
         winner = ""
@@ -153,7 +154,8 @@ def _worker_loop() -> None:
             except Exception:
                 pass
 
-        threading.Thread(target=_fahim_race, daemon=True).start()
+        if only != "widget":
+            threading.Thread(target=_fahim_race, daemon=True).start()
         try:
             if ensure_browser():
                 from sites.manus import turnstile as ts_mod
@@ -378,6 +380,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(
                     {"status": "error",
                      "message": "domain must be a full URL (https://...)"}, 400)
+            # Optional: {"only": "widget"} skips the Fahim race and times the
+            # local widget solve alone. {"only": "fahim"} skips the widget.
+            only = str(body.get("only") or "").lower().strip()
             t0 = time.time()
             tid = f"cf-{uuid4()}"
             with TASKS_LOCK:
@@ -385,7 +390,7 @@ class Handler(BaseHTTPRequestHandler):
             _ensure_workers()
             WORK_Q.put((tid, url, sitekey,
                         str(body.get("action") or ""),
-                        str(body.get("cdata") or ""), 110.0))
+                        str(body.get("cdata") or ""), 110.0, only))
             deadline = time.time() + 150.0
             token = ""
             while time.time() < deadline:
