@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: hope-solver
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: SOLVER_WORKERS
+        value: 2
