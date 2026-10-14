@@ -212,7 +212,7 @@ def _human_click_iframe(page) -> bool:
                 pass
             for sel in ("input[type=checkbox]", "label", "body"):
                 try:
-                    fr.click(sel, timeout=2000)
+                    fr.click(sel, timeout=800)
                     return True
                 except Exception:
                     continue
