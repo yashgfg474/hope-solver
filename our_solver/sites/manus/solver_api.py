@@ -33,6 +33,30 @@ sys.path.insert(0, str(ROOT))
 TASKS: dict = {}
 TASKS_LOCK = threading.Lock()
 
+# ── Fahim circuit breaker ──
+# The free Fahim API sometimes dies slowly (45s+ per 500, retried twice =
+# ~95s burned per request). After 2 consecutive failures, skip the Fahim
+# race entirely for 10 minutes so the local widget solve answers alone.
+_FAHIM_LOCK = threading.Lock()
+_FAHIM_FAILS = 0
+_FAHIM_DOWN_UNTIL = 0.0
+
+
+def _fahim_available() -> bool:
+    return time.time() >= _FAHIM_DOWN_UNTIL
+
+
+def _fahim_report(success: bool) -> None:
+    global _FAHIM_FAILS, _FAHIM_DOWN_UNTIL
+    with _FAHIM_LOCK:
+        if success:
+            _FAHIM_FAILS = 0
+            _FAHIM_DOWN_UNTIL = 0.0
+        else:
+            _FAHIM_FAILS += 1
+            if _FAHIM_FAILS >= 2:
+                _FAHIM_DOWN_UNTIL = time.time() + 600.0
+
 # ── warm solver workers (2s-style speed: no launch cost per task) ──
 # Each worker thread owns ONE persistent browser + ONE widget page.
 # A task = re-route stub (new sitekey) + poll token. Fahim stays fallback.
@@ -145,16 +169,20 @@ def _worker_loop() -> None:
         fahim_box: dict = {}
 
         def _fahim_race():
+            if not _fahim_available():
+                return  # circuit breaker: Fahim known-down, don't burn time
             try:
                 from sites.manus import auth as auth_mod
 
-                tok = auth_mod.solve_via_fahim(url=url, sitekey=sitekey, timeout=90.0)
+                tok = auth_mod.solve_via_fahim(url=url, sitekey=sitekey,
+                                               timeout=30.0)
+                _fahim_report(bool(tok))
                 if tok:
                     fahim_box["token"] = tok
             except Exception:
-                pass
+                _fahim_report(False)
 
-        if only != "widget":
+        if only != "widget" and _fahim_available():
             threading.Thread(target=_fahim_race, daemon=True).start()
         try:
             if ensure_browser():
@@ -334,7 +362,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"status": "error",
                                    "message": "unsolved"}, 500)
             if parts.path in ("/", "/health"):
-                return self._send({"ok": True, "service": "manus-turnstile-solver"})
+                return self._send({"ok": True, "service": "manus-turnstile-solver",
+                                   "fahim": ("down" if not _fahim_available()
+                                             else "up")})
             return self._send({"status": "error", "message": "unknown path"}, 404)
         except BrokenPipeError:
             pass
