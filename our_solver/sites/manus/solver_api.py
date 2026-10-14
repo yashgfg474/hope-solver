@@ -57,6 +57,14 @@ def _fahim_report(success: bool) -> None:
             if _FAHIM_FAILS >= 2:
                 _FAHIM_DOWN_UNTIL = time.time() + 600.0
 
+
+def _log(msg: str) -> None:
+    """Debug log to the console window (run.bat). Flush immediately."""
+    try:
+        print(f"[hope] {time.strftime('%H:%M:%S')} {msg}", flush=True)
+    except Exception:
+        pass
+
 # ── warm solver workers (2s-style speed: no launch cost per task) ──
 # Each worker thread owns ONE persistent browser + ONE widget page.
 # A task = re-route stub (new sitekey) + poll token. Fahim stays fallback.
@@ -128,8 +136,10 @@ def _worker_loop() -> None:
                                     locale="en-US", timezone_id="Asia/Kolkata",
                                     extra_http_headers=ts_mod.SEC_CH_UA_HEADERS)
             ts_mod._apply_stealth(page)
+            _log("browser launched OK")
             return True
-        except Exception:
+        except Exception as e:
+            _log(f"browser launch FAILED: {str(e)[:200]}")
             browser, page = None, None
             return False
 
@@ -151,7 +161,8 @@ def _worker_loop() -> None:
                 body=html, status=200, content_type="text/html"))
             page.goto(purl, wait_until="domcontentloaded", timeout=25000)
             return True
-        except Exception:
+        except Exception as e:
+            _log(f"widget render FAILED: {str(e)[:200]}")
             return False
 
     while True:
@@ -184,8 +195,12 @@ def _worker_loop() -> None:
 
         if only != "widget" and _fahim_available():
             threading.Thread(target=_fahim_race, daemon=True).start()
+        _log(f"task {task_id[:8]} start (only={only or 'race'}, "
+             f"fahim={'racing' if (only != 'widget' and _fahim_available()) else 'skipped'})")
+        if not ensure_browser():
+            _log(f"task {task_id[:8]}: no browser, waiting on Fahim race only")
         try:
-            if ensure_browser():
+            if browser is not None and page is not None:
                 from sites.manus import turnstile as ts_mod
 
                 assert page is not None
@@ -207,6 +222,8 @@ def _worker_loop() -> None:
                 ts_mod._mouse_wiggle(page, 1)
                 deadline = time.time() + timeout
                 last_click = 0.0
+                clicks = 0
+                last_heartbeat = 0.0
                 while time.time() < deadline:
                     if fahim_box.get("token"):
                         token = fahim_box["token"]
@@ -223,7 +240,20 @@ def _worker_loop() -> None:
                     if now - t0 > 0.8 and now - last_click > 1.0:
                         if ts_mod._human_click_iframe(page):
                             last_click = now
+                            clicks += 1
+                    if now - last_heartbeat > 10.0:
+                        last_heartbeat = now
+                        try:
+                            frames = [f.url for f in page.frames
+                                      if "challenges.cloudflare.com"
+                                      in (f.url or "")]
+                        except Exception:
+                            frames = ["?"]
+                        _log(f"task {task_id[:8]}: {now - t0:.0f}s in, "
+                             f"clicks={clicks}, cf_frames={len(frames)}")
                     time.sleep(0.2)
+                _log(f"task {task_id[:8]} done: winner={winner or 'NONE'}, "
+                     f"clicks={clicks}, elapsed={time.time() - t0:.1f}s")
         except Exception:
             token = ""
         if not token and fahim_box.get("token"):
