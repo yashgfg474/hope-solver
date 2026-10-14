@@ -14,5 +14,8 @@ python -m pip install --quiet -r ..\requirements.txt
 python -m playwright install chromium
 echo [Hope] Starting solver on http://127.0.0.1:8077 ...
 set SOLVER_WORKERS=2
+REM Set HEADFUL=1 below to run a VISIBLE browser (much harder for Cloudflare
+REM to detect than headless). Needs a real screen - use on your home PC.
+REM set HEADFUL=1
 python -m sites.manus.solver_api --host 127.0.0.1 --port 8077
 pause
