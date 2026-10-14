@@ -118,16 +118,20 @@ def _worker_loop() -> None:
 
             pw = sync_playwright().start()
             exe = ts_mod._chromium_path()
+            headful = (os.environ.get("HEADFUL") or "").strip().lower() in (
+                "1", "true", "yes")
             args = [
                 "--no-sandbox",
                 "--disable-blink-features=AutomationControlled",
                 "--disable-dev-shm-usage",
                 "--disable-quic",
                 "--enable-unsafe-swiftshader",
-                "--headless=new",
-                "--host-resolver-rules=MAP brunhild.challenges.cloudflare.com 104.18.95.41",
                 f"--user-agent={ts_mod.UA}",
             ]
+            if not headful:
+                args.append("--headless=new")
+            else:
+                _log("HEADFUL mode: visible browser window")
             kw: dict = {"headless": False, "args": args}
             if exe:
                 kw["executable_path"] = exe
