@@ -164,7 +164,8 @@ def _chromium_path() -> Optional[str]:
                  "/usr/bin/chromium-browser", "/usr/bin/google-chrome"):
         if os.path.isfile(cand):
             return cand
-    return shutil.which("chromium") or shutil.which("google-chrome")
+    return (shutil.which("chromium") or shutil.which("chromium-browser")
+            or shutil.which("google-chrome"))
 
 
 def _apply_stealth(page) -> None:
